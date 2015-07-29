@@ -1,6 +1,6 @@
 ---
-- name: Copy openshift examples
-  synchronize: src=examples dest=/usr/share/openshift
+# - name: Copy openshift examples
+#  synchronize: src=examples dest=/usr/share/openshift
 
 # RHEL and Centos image streams are mutually exclusive
 - name: Import RHEL streams
