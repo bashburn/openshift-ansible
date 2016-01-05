@@ -1,66 +1,60 @@
 ---
 - hosts: localhost
   gather_facts: no
+  connection: local
+  become: no
   vars:
-    g_zserver: http://oso-rhel7-zabbix-web.kwoodsontest2.opstest.online.openshift.com/zabbix/api_jsonrpc.php
-    g_zuser: Admin
-    g_zpassword: zabbix
-  roles:
-  - ../roles/os_zabbix
-  post_tasks:
+    g_server: http://localhost:8080/zabbix/api_jsonrpc.php
+    g_user: ''
+    g_password: ''
 
-  - zbxapi:
-      server: "{{ g_zserver }}"
-      user: "{{ g_zuser }}"
-      password: "{{ g_zpassword }}"
-      zbx_class: Template
+  roles:
+  - lib_zabbix
+
+  post_tasks:
+  - name: CLEAN List template for heartbeat
+    zbx_template:
+      zbx_server: "{{ g_server }}"
+      zbx_user: "{{ g_user }}"
+      zbx_password: "{{ g_password }}"
       state: list
-      params:
-        output: extend
-        search:
-          host: 'Template Heartbeat'
+      name: 'Template Heartbeat'
     register: templ_heartbeat
 
-  - zbxapi:
-      server: "{{ g_zserver }}"
-      user: "{{ g_zuser }}"
-      password: "{{ g_zpassword }}"
-      zbx_class: Template
+  - name: CLEAN List template app zabbix server
+    zbx_template:
+      zbx_server: "{{ g_server }}"
+      zbx_user: "{{ g_user }}"
+      zbx_password: "{{ g_password }}"
       state: list
-      params:
-        output: extend
-        search:
-          host: 'Template App Zabbix Server'
+      name: 'Template App Zabbix Server'
     register: templ_zabbix_server
 
-  - zbxapi:
-      server: "{{ g_zserver }}"
-      user: "{{ g_zuser }}"
-      password: "{{ g_zpassword }}"
-      zbx_class: Template
+  - name: CLEAN List template app zabbix server
+    zbx_template:
+      zbx_server: "{{ g_server }}"
+      zbx_user: "{{ g_user }}"
+      zbx_password: "{{ g_password }}"
       state: list
-      params:
-        output: extend
-        search:
-          host: 'Template App Zabbix Agent'
+      name: 'Template App Zabbix Agent'
     register: templ_zabbix_agent
 
-  - zbxapi:
-      server: "{{ g_zserver }}"
-      user: "{{ g_zuser }}"
-      password: "{{ g_zpassword }}"
-      zbx_class: Template
+  - name: CLEAN List all templates
+    zbx_template:
+      zbx_server: "{{ g_server }}"
+      zbx_user: "{{ g_user }}"
+      zbx_password: "{{ g_password }}"
       state: list
     register: templates
 
   - debug: var=templ_heartbeat.results
 
-  - zbxapi:
-      server: "{{ g_zserver }}"
-      user: "{{ g_zuser }}"
-      password: "{{ g_zpassword }}"
-      zbx_class: Template
+  - name: Remove templates if heartbeat template is missing
+    zbx_template:
+      zbx_server: "{{ g_server }}"
+      zbx_user: "{{ g_user }}"
+      zbx_password: "{{ g_password }}"
+      name: "{{ item }}"
       state: absent
-      params: "{{templates.results | difference(templ_zabbix_agent.results) | difference(templ_zabbix_server.results) | oo_collect('templateid') }}"
-    register: template_results
+    with_items: "{{ templates.results | difference(templ_zabbix_agent.results) | difference(templ_zabbix_server.results) | oo_collect('host') }}"
     when:  templ_heartbeat.results | length == 0

@@ -13,7 +13,7 @@ OLDREV=$1
 NEWREV=$2
 #TRG_BRANCH=$3
 
-PYTHON=/var/lib/jenkins/python27/bin/python
+PYTHON=$(which python)
 
 set +e
 PY_DIFF=$(/usr/bin/git diff --name-only $OLDREV $NEWREV --diff-filter=ACM | grep ".py$")
@@ -39,6 +39,8 @@ for PY_FILE in $PY_DIFF; do
     FILES_TO_TEST="${FILES_TO_TEST} ${PY_FILE}"
   fi
 done
+
+export PYTHONPATH=${WORKSPACE}/utils/src/:${WORKSPACE}/utils/test/
 
 if [ "${FILES_TO_TEST}" != "" ]; then
   echo "Testing files: ${FILES_TO_TEST}"

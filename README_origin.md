@@ -15,7 +15,7 @@
   * There is currently a known issue with ansible-1.9.0, you can downgrade to 1.8.4 on Fedora by installing one of the builds from Koji: http://koji.fedoraproject.org/koji/packageinfo?packageID=13842
   * Available in Fedora channels
   * Available for EL with EPEL and Optional channel
-* One or more RHEL 7.1 or CentOS 7.1 VMs
+* One or more RHEL 7.1+, CentOS 7.1+, or Fedora 23+ VMs
 * Either ssh key based auth for the root user or ssh key based auth for a user
   with sudo access (no password)
 * A checkout of openshift-ansible from https://github.com/openshift/openshift-ansible/
@@ -39,6 +39,12 @@ subscription-manager repos \
 ```
 * Configuration of router is not automated yet
 * Configuration of docker-registry is not automated yet
+* Fedora 23+ doesn't come with python2 and will need a quick bootstrap. Setup
+  your inventory as described below and run the following (substituting the
+  `$PATH_TO_INVENTORY_FILE` with the actual path to your inventory file):
+```sh
+ansible-playbook ./playbooks/adhoc/bootstrap-fedora.yml -i $PATH_TO_INVENTORY_FILE
+```
 
 ## Configuring the host inventory
 [Ansible docs](http://docs.ansible.com/intro_inventory.html)
@@ -53,12 +59,13 @@ option to ansible-playbook.
 # This is an example of a bring your own (byo) host inventory
 
 # Create an OSEv3 group that contains the masters and nodes groups
-[OSv3:children]
+[OSEv3:children]
 masters
 nodes
 
 # Set variables common for all OSEv3 hosts
-[OSv3:vars]
+[OSEv3:vars]
+
 # SSH user, this user should allow ssh based auth without requiring a password
 ansible_ssh_user=root
 
@@ -73,11 +80,22 @@ osv3-master.example.com
 
 # host group for nodes
 [nodes]
+osv3-master.example.com
 osv3-node[1:2].example.com
+
+# host group for etcd
+[etcd]
+osv3-etcd[1:3].example.com
+
+[lb]
+osv3-lb.example.com
+
 ```
 
 The hostnames above should resolve both from the hosts themselves and
 the host where ansible is running (if different).
+
+A more complete example inventory file ([hosts.origin.example](https://github.com/openshift/openshift-ansible/blob/master/inventory/byo/hosts.origin.example)) is available under the [`/inventory/byo`](https://github.com/openshift/openshift-ansible/tree/master/inventory/byo) directory.
 
 ## Running the ansible playbooks
 From the openshift-ansible checkout run:
@@ -88,20 +106,8 @@ ansible-playbook playbooks/byo/config.yml
 inventory file use the -i option for ansible-playbook.
 
 ## Post-ansible steps
-#### Create the default router
-On the master host:
-```sh
-oadm router --create=true \
-  --credentials=/etc/openshift/master/openshift-router.kubeconfig
-```
 
-#### Create the default docker-registry
-On the master host:
-```sh
-oadm registry --create=true \
-  --credentials=/etc/openshift/master/openshift-registry.kubeconfig \
-  --mount-host=/var/lib/openshift/docker-registry
-```
+You should now be ready to follow the [What's Next?](https://docs.openshift.org/latest/install_config/install/advanced_install.html#what-s-next) section of the advanced installation guide to deploy your router, registry, and other components.
 
 ## Overriding detected ip addresses and hostnames
 Some deployments will require that the user override the detected hostnames

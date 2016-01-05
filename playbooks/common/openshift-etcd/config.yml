@@ -13,6 +13,9 @@
           hostname: "{{ openshift_hostname | default(None) }}"
           public_hostname: "{{ openshift_public_hostname | default(None) }}"
           deployment_type: "{{ openshift_deployment_type }}"
+      - role: etcd
+        local_facts:
+          etcd_image: "{{ osm_etcd_image | default(None) }}"
   - name: Check status of etcd certificates
     stat:
       path: "{{ item }}"
@@ -22,7 +25,7 @@
     - /etc/etcd/ca.crt
     register: g_etcd_server_cert_stat_result
   - set_fact:
-      etcd_server_certs_missing: "{{ g_etcd_server_cert_stat_result.results | map(attribute='stat.exists')
+      etcd_server_certs_missing: "{{ g_etcd_server_cert_stat_result.results | oo_collect(attribute='stat.exists')
                                     | list | intersect([false])}}"
       etcd_cert_subdir: etcd-{{ openshift.common.hostname }}
       etcd_cert_config_dir: /etc/etcd
@@ -31,7 +34,7 @@
 - name: Create temp directory for syncing certs
   hosts: localhost
   connection: local
-  sudo: false
+  become: no
   gather_facts: no
   tasks:
   - name: Create local temp directory for syncing certs
@@ -85,11 +88,13 @@
     when: etcd_server_certs_missing
   roles:
   - etcd
+  - role: nickhammond.logrotate
+    when: not openshift.common.is_containerized | bool
 
 - name: Delete temporary directory on localhost
   hosts: localhost
   connection: local
-  sudo: false
+  become: no
   gather_facts: no
   tasks:
   - file: name={{ g_etcd_mktemp.stdout }} state=absent

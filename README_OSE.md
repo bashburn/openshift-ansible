@@ -79,9 +79,6 @@ ansible_ssh_user=root
 # To deploy origin, change deployment_type to origin
 deployment_type=enterprise
 
-# Pre-release registry URL
-oreg_url=docker-buildvm-rhose.usersys.redhat.com:5000/openshift3/ose-${component}:${version}
-
 # Pre-release additional repo
 openshift_additional_repos=[{'id': 'ose-devel', 'name': 'ose-devel',
 'baseurl':
@@ -101,11 +98,14 @@ ose3-master.example.com
 
 # host group for nodes
 [nodes]
+ose3-master.example.com
 ose3-node[1:2].example.com
 ```
 
 The hostnames above should resolve both from the hosts themselves and
 the host where ansible is running (if different).
+
+A more complete example inventory file ([hosts.ose.example](https://github.com/openshift/openshift-ansible/blob/master/inventory/byo/hosts.ose.example)) is available under the [`/inventory/byo`](https://github.com/openshift/openshift-ansible/tree/master/inventory/byo) directory.
 
 ## Running the ansible playbooks
 From the openshift-ansible checkout run:
@@ -116,22 +116,8 @@ ansible-playbook playbooks/byo/config.yml
 inventory file use the -i option for ansible-playbook.
 
 ## Post-ansible steps
-#### Create the default router
-On the master host:
-```sh
-oadm router --create=true \
-  --credentials=/etc/openshift/master/openshift-router.kubeconfig \
-  --images='docker-buildvm-rhose.usersys.redhat.com:5000/openshift3/ose-${component}:${version}'
-```
 
-#### Create the default docker-registry
-On the master host:
-```sh
-oadm registry --create=true \
-  --credentials=/etc/openshift/master/openshift-registry.kubeconfig \
-  --images='docker-buildvm-rhose.usersys.redhat.com:5000/openshift3/ose-${component}:${version}' \
-  --mount-host=/var/lib/openshift/docker-registry
-```
+You should now be ready to follow the [What's Next?](https://docs.openshift.com/enterprise/3.0/install_config/install/advanced_install.html#what-s-next) section of the advanced installation guide to deploy your router, registry, and other components.
 
 ## Overriding detected ip addresses and hostnames
 Some deployments will require that the user override the detected hostnames

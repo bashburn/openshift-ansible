@@ -9,16 +9,6 @@ parameters:
     label: Cluster ID
     description: Identifier of the cluster
 
-  num_masters:
-    type: number
-    label: Number of masters
-    description: Number of masters
-
-  num_nodes:
-    type: number
-    label: Number of nodes
-    description: Number of nodes
-
   cidr:
     type: string
     label: CIDR
@@ -35,6 +25,12 @@ parameters:
     description: Name of the external network
     default: external
 
+  floating_ip_pool:
+    type: string
+    label: Floating IP pool
+    description: Floating IP pools
+    default: external
+
   ssh_public_key:
     type: string
     label: SSH public key
@@ -47,6 +43,31 @@ parameters:
     description: Source of legitimate ssh connections
     default: 0.0.0.0/0
 
+  num_etcd:
+    type: number
+    label: Number of etcd nodes
+    description: Number of etcd nodes
+
+  num_masters:
+    type: number
+    label: Number of masters
+    description: Number of masters
+
+  num_nodes:
+    type: number
+    label: Number of compute nodes
+    description: Number of compute nodes
+
+  num_infra:
+    type: number
+    label: Number of infrastructure nodes
+    description: Number of infrastructure nodes
+
+  etcd_image:
+    type: string
+    label: Etcd image
+    description: Name of the image for the etcd servers
+
   master_image:
     type: string
     label: Master image
@@ -55,7 +76,17 @@ parameters:
   node_image:
     type: string
     label: Node image
-    description: Name of the image for the node servers
+    description: Name of the image for the compute node servers
+
+  infra_image:
+    type: string
+    label: Infra image
+    description: Name of the image for the infra node servers
+
+  etcd_flavor:
+    type: string
+    label: Etcd flavor
+    description: Flavor of the etcd servers
 
   master_flavor:
     type: string
@@ -65,9 +96,26 @@ parameters:
   node_flavor:
     type: string
     label: Node flavor
-    description: Flavor of the node servers
+    description: Flavor of the compute node servers
+
+  infra_flavor:
+    type: string
+    label: Infra flavor
+    description: Flavor of the infra node servers
 
 outputs:
+
+  etcd_names:
+    description: Name of the etcds
+    value: { get_attr: [ etcd, name ] }
+
+  etcd_ips:
+    description: IPs of the etcds
+    value: { get_attr: [ etcd, private_ip ] }
+
+  etcd_floating_ips:
+    description: Floating IPs of the etcds
+    value: { get_attr: [ etcd, floating_ip ] }
 
   master_names:
     description: Name of the masters
@@ -83,15 +131,27 @@ outputs:
 
   node_names:
     description: Name of the nodes
-    value: { get_attr: [ nodes, name ] }
+    value: { get_attr: [ compute_nodes, name ] }
 
   node_ips:
     description: IPs of the nodes
-    value: { get_attr: [ nodes, private_ip ] }
+    value: { get_attr: [ compute_nodes, private_ip ] }
 
   node_floating_ips:
     description: Floating IPs of the nodes
-    value: { get_attr: [ nodes, floating_ip ] }
+    value: { get_attr: [ compute_nodes, floating_ip ] }
+
+  infra_names:
+    description: Name of the nodes
+    value: { get_attr: [ infra_nodes, name ] }
+
+  infra_ips:
+    description: IPs of the nodes
+    value: { get_attr: [ infra_nodes, private_ip ] }
+
+  infra_floating_ips:
+    description: Floating IPs of the nodes
+    value: { get_attr: [ infra_nodes, floating_ip ] }
 
 resources:
 
@@ -187,6 +247,37 @@ resources:
           port_range_min: 24224
           port_range_max: 24224
 
+  etcd-secgrp:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name:
+        str_replace:
+          template: openshift-ansible-cluster_id-etcd-secgrp
+          params:
+            cluster_id: { get_param: cluster_id }
+      description:
+        str_replace:
+          template: Security group for cluster_id etcd cluster
+          params:
+            cluster_id: { get_param: cluster_id }
+      rules:
+        - direction: ingress
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+          remote_ip_prefix: { get_param: ssh_incoming }
+        - direction: ingress
+          protocol: tcp
+          port_range_min: 2379
+          port_range_max: 2379
+          remote_mode: remote_group_id
+          remote_group_id: { get_resource: master-secgrp }
+        - direction: ingress
+          protocol: tcp
+          port_range_min: 2380
+          port_range_max: 2380
+          remote_mode: remote_group_id
+
   node-secgrp:
     type: OS::Neutron::SecurityGroup
     properties:
@@ -218,6 +309,59 @@ resources:
           remote_mode: remote_group_id
           remote_group_id: { get_resource: master-secgrp }
 
+  infra-secgrp:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name:
+        str_replace:
+          template: openshift-ansible-cluster_id-infra-secgrp
+          params:
+            cluster_id: { get_param: cluster_id }
+      description:
+        str_replace:
+          template: Security group for cluster_id OpenShift infrastructure cluster nodes
+          params:
+            cluster_id: { get_param: cluster_id }
+      rules:
+        - direction: ingress
+          protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+        - direction: ingress
+          protocol: tcp
+          port_range_min: 443
+          port_range_max: 443
+
+  etcd:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: num_etcd }
+      resource_def:
+        type: heat_stack_server.yaml
+        properties:
+          name:
+            str_replace:
+              template: cluster_id-k8s_type-%index%
+              params:
+                cluster_id: { get_param: cluster_id }
+                k8s_type: etcd
+          cluster_id: { get_param: cluster_id }
+          type:       etcd
+          image:      { get_param: etcd_image }
+          flavor:     { get_param: etcd_flavor }
+          key_name:   { get_resource: keypair }
+          net:        { get_resource: net }
+          subnet:     { get_resource: subnet }
+          secgrp:
+            - { get_resource: etcd-secgrp }
+          floating_network: { get_param: floating_ip_pool }
+          net_name:
+            str_replace:
+              template: openshift-ansible-cluster_id-net
+              params:
+                cluster_id: { get_param: cluster_id }
+    depends_on: interface
+
   masters:
     type: OS::Heat::ResourceGroup
     properties:
@@ -240,7 +384,7 @@ resources:
           subnet:     { get_resource: subnet }
           secgrp:
             - { get_resource: master-secgrp }
-          floating_network: { get_param: external_net }
+          floating_network: { get_param: floating_ip_pool }
           net_name:
             str_replace:
               template: openshift-ansible-cluster_id-net
@@ -248,7 +392,7 @@ resources:
                 cluster_id: { get_param: cluster_id }
     depends_on: interface
 
-  nodes:
+  compute_nodes:
     type: OS::Heat::ResourceGroup
     properties:
       count: { get_param: num_nodes }
@@ -257,12 +401,14 @@ resources:
         properties:
           name:
             str_replace:
-              template: cluster_id-k8s_type-%index%
+              template: cluster_id-k8s_type-sub_host_type-%index%
               params:
                 cluster_id: { get_param: cluster_id }
                 k8s_type: node
+                sub_host_type: compute
           cluster_id: { get_param: cluster_id }
           type:       node
+          subtype:    compute
           image:      { get_param: node_image }
           flavor:     { get_param: node_flavor }
           key_name:   { get_resource: keypair }
@@ -270,7 +416,40 @@ resources:
           subnet:     { get_resource: subnet }
           secgrp:
             - { get_resource: node-secgrp }
-          floating_network: { get_param: external_net }
+          floating_network: { get_param: floating_ip_pool }
+          net_name:
+            str_replace:
+              template: openshift-ansible-cluster_id-net
+              params:
+                cluster_id: { get_param: cluster_id }
+    depends_on: interface
+
+  infra_nodes:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: num_infra }
+      resource_def:
+        type: heat_stack_server.yaml
+        properties:
+          name:
+            str_replace:
+              template: cluster_id-k8s_type-sub_host_type-%index%
+              params:
+                cluster_id: { get_param: cluster_id }
+                k8s_type: node
+                sub_host_type: infra
+          cluster_id: { get_param: cluster_id }
+          type:       node
+          subtype:    infra
+          image:      { get_param: infra_image }
+          flavor:     { get_param: infra_flavor }
+          key_name:   { get_resource: keypair }
+          net:        { get_resource: net }
+          subnet:     { get_resource: subnet }
+          secgrp:
+            - { get_resource: node-secgrp }
+            - { get_resource: infra-secgrp }
+          floating_network: { get_param: floating_ip_pool }
           net_name:
             str_replace:
               template: openshift-ansible-cluster_id-net
